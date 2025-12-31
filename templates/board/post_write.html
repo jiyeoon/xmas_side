@@ -1,0 +1,693 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if is_edit %}글 수정{% else %}글쓰기{% endif %} - HumbleB{% endblock %}
+
+{% block page_title %}게시판{% endblock %}
+
+{% block extra_css %}
+<!-- Quill Editor CSS -->
+<link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
+<style>
+/* 이미지 리사이즈 관련 스타일 */
+.ql-editor img {
+    cursor: pointer;
+    max-width: 100%;
+}
+
+.ql-editor img.selected {
+    outline: 2px solid #14B8A6;
+    outline-offset: 2px;
+}
+
+/* 이미지 크기 조정 툴바 */
+.image-resize-toolbar {
+    position: fixed;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    padding: 8px;
+    display: none;
+    z-index: 1000;
+    gap: 4px;
+}
+
+.image-resize-toolbar.show {
+    display: flex;
+}
+
+.image-resize-toolbar button {
+    padding: 6px 12px;
+    border: 1px solid #e5e7eb;
+    background: white;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.2s;
+}
+
+.image-resize-toolbar button:hover {
+    background: #f1f5f9;
+}
+
+.image-resize-toolbar button.active {
+    background: #14B8A6;
+    color: white;
+    border-color: #14B8A6;
+}
+
+.image-resize-toolbar button.delete-btn {
+    color: #ef4444;
+    border-color: #fecaca;
+}
+
+.image-resize-toolbar button.delete-btn:hover {
+    background: #fef2f2;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="write-container">
+    <!-- 헤더 -->
+    <div class="write-header">
+        <a href="{% if is_edit %}{% url 'board:detail' post.id %}{% else %}{% url 'board:list' %}{% endif %}" class="back-link">← {% if is_edit %}돌아가기{% else %}목록으로{% endif %}</a>
+        <h1>{% if is_edit %}✏️ 글 수정{% else %}✏️ 글쓰기{% endif %}</h1>
+    </div>
+
+    <!-- 글쓰기/수정 폼 -->
+    <form id="writeForm" class="write-form" enctype="multipart/form-data">
+        {% csrf_token %}
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label>카테고리</label>
+                <select name="category" id="category">
+                    <option value="free" {% if post.category == 'free' or category == 'free' %}selected{% endif %}>💬 자유게시판</option>
+                    <option value="notice" {% if post.category == 'notice' or category == 'notice' %}selected{% endif %}>📢 공지사항</option>
+                    <option value="gallery" {% if post.category == 'gallery' or category == 'gallery' %}selected{% endif %}>📸 사진갤러리</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>작성자</label>
+                <select name="author_id" id="authorSelect" onchange="handleAuthorChange()">
+                    <option value="">직접 입력</option>
+                    {% for member in members %}
+                    <option value="{{ member.id }}" {% if post.author.id == member.id %}selected{% endif %}>{{ member.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        
+        <div class="form-group" id="authorNameGroup" {% if post.author %}style="display:none;"{% endif %}>
+            <label>작성자 이름</label>
+            <input type="text" name="author_name" id="authorName" placeholder="이름을 입력하세요" value="{% if post and not post.author %}{{ post.author_name }}{% endif %}">
+        </div>
+
+        <div class="form-group">
+            <label>제목 <span class="required">*</span></label>
+            <input type="text" name="title" id="title" placeholder="제목을 입력하세요" value="{% if post %}{{ post.title }}{% endif %}" required>
+        </div>
+
+        <div class="form-group">
+            <label>내용</label>
+            <div id="editor-container">
+                <div id="editor">{% if post %}{{ post.content|safe }}{% endif %}</div>
+            </div>
+            <input type="hidden" name="content" id="content">
+            
+            <!-- 이미지 크기 조정 툴바 -->
+            <div id="imageResizeToolbar" class="image-resize-toolbar">
+                <button type="button" data-width="25%">25%</button>
+                <button type="button" data-width="50%">50%</button>
+                <button type="button" data-width="75%">75%</button>
+                <button type="button" data-width="100%">100%</button>
+                <button type="button" class="delete-btn" data-action="delete">🗑️</button>
+            </div>
+        </div>
+
+        {% if is_edit %}
+            {% if post.has_password %}
+        <div class="form-group">
+            <label>🔒 비밀번호 확인</label>
+            <input type="password" name="password" id="password" placeholder="게시글 비밀번호를 입력하세요" required>
+            <small class="form-hint">이 게시글을 수정하려면 비밀번호가 필요합니다.</small>
+        </div>
+            {% endif %}
+        {% else %}
+        <div class="form-group">
+            <label>🔒 비밀번호 (선택)</label>
+            <input type="password" name="password" id="password" placeholder="수정/삭제 시 필요한 비밀번호 (선택사항)">
+            <small class="form-hint">비밀번호를 설정하면 수정/삭제 시 비밀번호가 필요합니다.</small>
+        </div>
+        {% endif %}
+
+        <div class="form-group checkbox-group">
+            <label class="checkbox-label">
+                <input type="checkbox" name="is_pinned" id="isPinned" {% if post.is_pinned %}checked{% endif %}>
+                <span>📌 상단 고정 (공지사항용)</span>
+            </label>
+        </div>
+
+        <div class="form-actions">
+            <a href="{% if is_edit %}{% url 'board:detail' post.id %}{% else %}{% url 'board:list' %}{% endif %}" class="btn btn-secondary">취소</a>
+            <button type="submit" class="btn btn-primary">{% if is_edit %}수정하기{% else %}등록하기{% endif %}</button>
+        </div>
+    </form>
+</div>
+
+<style>
+.write-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.write-header {
+    margin-bottom: 24px;
+}
+
+.back-link {
+    display: inline-block;
+    color: #64748b;
+    text-decoration: none;
+    margin-bottom: 12px;
+    font-size: 0.9rem;
+}
+
+.back-link:hover {
+    color: #14B8A6;
+}
+
+.write-header h1 {
+    font-size: 1.6rem;
+    margin: 0;
+}
+
+.write-form {
+    background: white;
+    padding: 24px;
+    border-radius: 16px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: #374151;
+}
+
+.form-group .required {
+    color: #ef4444;
+}
+
+.form-group input[type="text"],
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 12px 16px;
+    border: 2px solid #e5e7eb;
+    border-radius: 10px;
+    font-size: 1rem;
+    box-sizing: border-box;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: #14B8A6;
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.1);
+}
+
+/* Quill 에디터 */
+#editor-container {
+    border: 2px solid #e5e7eb;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+#editor {
+    min-height: 400px;
+    font-size: 1rem;
+    line-height: 1.8;
+}
+
+.ql-toolbar {
+    border: none !important;
+    border-bottom: 1px solid #e5e7eb !important;
+    background: #f9fafb;
+}
+
+.ql-container {
+    border: none !important;
+    font-family: inherit;
+}
+
+.ql-editor {
+    padding: 16px 20px;
+}
+
+.ql-editor.ql-blank::before {
+    color: #9ca3af;
+    font-style: normal;
+}
+
+.ql-editor img {
+    max-width: 100%;
+    border-radius: 8px;
+    margin: 16px 0;
+}
+
+.ql-snow .ql-tooltip {
+    z-index: 1000;
+}
+
+/* 체크박스 */
+.checkbox-group {
+    margin-top: 24px;
+}
+
+.checkbox-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-weight: normal !important;
+    vertical-align: middle;
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    padding: 0;
+    cursor: pointer;
+    flex-shrink: 0;
+    vertical-align: middle;
+    position: relative;
+    top: -1px;
+}
+
+.checkbox-label span {
+    line-height: 18px;
+    vertical-align: middle;
+}
+
+/* 힌트 텍스트 */
+.form-hint {
+    display: block;
+    margin-top: 6px;
+    font-size: 0.85rem;
+    color: #64748b;
+}
+
+/* 액션 버튼 */
+.form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 32px;
+    padding-top: 24px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.form-actions .btn {
+    padding: 12px 32px;
+    font-size: 1rem;
+}
+
+/* 반응형 */
+@media (max-width: 768px) {
+    .write-container {
+        padding: 12px;
+    }
+    
+    .write-header {
+        margin-bottom: 16px;
+    }
+    
+    .write-header h1 {
+        font-size: 1.3rem;
+    }
+    
+    .write-form {
+        padding: 16px;
+        border-radius: 12px;
+    }
+    
+    .form-row {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    
+    .form-group label {
+        font-size: 0.9rem;
+        margin-bottom: 6px;
+    }
+    
+    .form-group input,
+    .form-group select {
+        padding: 12px 14px;
+        font-size: 16px; /* iOS 줌 방지 */
+    }
+    
+    /* Quill 에디터 모바일 */
+    #editor {
+        min-height: 250px;
+    }
+    
+    .ql-toolbar {
+        padding: 8px !important;
+    }
+    
+    .ql-toolbar .ql-formats {
+        margin-right: 8px !important;
+    }
+    
+    .ql-editor {
+        padding: 12px;
+        font-size: 16px; /* iOS 줌 방지 */
+    }
+    
+    /* 체크박스 */
+    .checkbox-group {
+        margin-top: 16px;
+    }
+    
+    /* 액션 버튼 */
+    .form-actions {
+        flex-direction: column-reverse;
+        gap: 10px;
+        margin-top: 24px;
+        padding-top: 20px;
+    }
+    
+    .form-actions .btn {
+        width: 100%;
+        padding: 14px;
+        font-size: 1rem;
+    }
+    
+    /* 이미지 리사이즈 툴바 */
+    .image-resize-toolbar {
+        flex-wrap: wrap;
+        max-width: 90vw;
+        padding: 6px;
+    }
+    
+    .image-resize-toolbar button {
+        padding: 8px 10px;
+        font-size: 0.8rem;
+    }
+}
+</style>
+
+<!-- Quill Editor JS -->
+<script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
+<script>
+// Quill 에디터 초기화
+const quill = new Quill('#editor', {
+    theme: 'snow',
+    placeholder: '내용을 입력하세요...',
+    modules: {
+        toolbar: {
+            container: [
+                [{ 'header': [1, 2, 3, false] }],
+                ['bold', 'italic', 'underline', 'strike'],
+                [{ 'color': [] }, { 'background': [] }],
+                [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                [{ 'align': [] }],
+                ['link', 'image'],
+                ['clean']
+            ],
+            handlers: {
+                image: imageHandler
+            }
+        }
+    }
+});
+
+// 이미지 리사이즈 함수
+function resizeImage(file, maxWidth = 1200, quality = 0.8) {
+    return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                // 리사이즈가 필요한지 확인
+                if (img.width <= maxWidth) {
+                    // 리사이즈 불필요하지만 용량 줄이기 위해 압축
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0);
+                    resolve(canvas.toDataURL('image/jpeg', quality));
+                } else {
+                    // 비율 유지하며 리사이즈
+                    const ratio = maxWidth / img.width;
+                    const newWidth = maxWidth;
+                    const newHeight = img.height * ratio;
+                    
+                    const canvas = document.createElement('canvas');
+                    canvas.width = newWidth;
+                    canvas.height = newHeight;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, newWidth, newHeight);
+                    resolve(canvas.toDataURL('image/jpeg', quality));
+                }
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+// 이미지 핸들러 - 클릭 시 파일 선택
+function imageHandler() {
+    const input = document.createElement('input');
+    input.setAttribute('type', 'file');
+    input.setAttribute('accept', 'image/*');
+    input.click();
+    
+    input.onchange = async () => {
+        const file = input.files[0];
+        if (file) {
+            // 파일 크기 체크 (10MB 이상이면 경고)
+            if (file.size > 10 * 1024 * 1024) {
+                showToast('이미지가 너무 큽니다. 10MB 이하의 이미지를 사용해주세요.', 'error');
+                return;
+            }
+            
+            try {
+                // 이미지 리사이즈 및 압축
+                showToast('이미지 처리 중...', 'info');
+                const resizedImage = await resizeImage(file, 1200, 0.8);
+                
+                const range = quill.getSelection(true);
+                quill.insertEmbed(range.index, 'image', resizedImage);
+                quill.setSelection(range.index + 1);
+                
+                // 새로 삽입된 이미지에 이벤트 바인딩
+                setTimeout(() => {
+                    bindImageClickEvents();
+                }, 100);
+                
+                showToast('이미지가 추가되었습니다.', 'success');
+            } catch (error) {
+                showToast('이미지 처리 중 오류가 발생했습니다.', 'error');
+            }
+        }
+    };
+}
+
+// 이미지 리사이즈 툴바 관련
+let selectedImage = null;
+const resizeToolbar = document.getElementById('imageResizeToolbar');
+
+// 에디터 내 이미지 클릭 이벤트 바인딩
+function bindImageClickEvents() {
+    const editor = document.querySelector('.ql-editor');
+    const images = editor.querySelectorAll('img');
+    
+    images.forEach(img => {
+        // 이미 바인딩된 이미지는 건너뛰기
+        if (img.dataset.bound) return;
+        img.dataset.bound = 'true';
+        
+        img.addEventListener('click', (e) => {
+            e.stopPropagation();
+            
+            // 이전 선택 해제
+            if (selectedImage) {
+                selectedImage.classList.remove('selected');
+            }
+            
+            // 새 이미지 선택
+            selectedImage = img;
+            img.classList.add('selected');
+            
+            // 툴바 위치 설정 및 표시
+            const rect = img.getBoundingClientRect();
+            resizeToolbar.style.top = (rect.top - 50) + 'px';
+            resizeToolbar.style.left = rect.left + 'px';
+            resizeToolbar.classList.add('show');
+            
+            // 현재 크기에 맞는 버튼 활성화
+            updateToolbarButtons(img);
+        });
+    });
+}
+
+// 툴바 버튼 상태 업데이트
+function updateToolbarButtons(img) {
+    const buttons = resizeToolbar.querySelectorAll('button[data-width]');
+    const currentWidth = img.style.width || '100%';
+    
+    buttons.forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.dataset.width === currentWidth) {
+            btn.classList.add('active');
+        }
+    });
+}
+
+// 툴바 버튼 클릭 이벤트
+resizeToolbar.addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (!btn || !selectedImage) return;
+    
+    if (btn.dataset.width) {
+        // 크기 조정
+        selectedImage.style.width = btn.dataset.width;
+        updateToolbarButtons(selectedImage);
+    } else if (btn.dataset.action === 'delete') {
+        // 이미지 삭제
+        selectedImage.remove();
+        hideToolbar();
+    }
+});
+
+// 툴바 숨기기
+function hideToolbar() {
+    resizeToolbar.classList.remove('show');
+    if (selectedImage) {
+        selectedImage.classList.remove('selected');
+        selectedImage = null;
+    }
+}
+
+// 에디터 외부 클릭 시 툴바 숨기기
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.ql-editor') && !e.target.closest('.image-resize-toolbar')) {
+        hideToolbar();
+    }
+});
+
+// ESC 키로 툴바 숨기기
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        hideToolbar();
+    }
+});
+
+// 초기 이미지에 이벤트 바인딩 (수정 모드일 때)
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        bindImageClickEvents();
+    }, 500);
+    
+    // 수정 모드일 때 sessionStorage에서 비밀번호 복원
+    {% if is_edit and post %}
+    const savedPassword = sessionStorage.getItem('editPassword_{{ post.id }}');
+    if (savedPassword) {
+        const passwordField = document.getElementById('password');
+        if (passwordField) {
+            passwordField.value = savedPassword;
+        }
+        // 사용 후 삭제 (보안)
+        sessionStorage.removeItem('editPassword_{{ post.id }}');
+    }
+    {% endif %}
+});
+
+// 작성자 선택 핸들러
+function handleAuthorChange() {
+    const select = document.getElementById('authorSelect');
+    const nameGroup = document.getElementById('authorNameGroup');
+    const nameInput = document.getElementById('authorName');
+    
+    if (select.value) {
+        nameGroup.style.display = 'none';
+        nameInput.value = select.options[select.selectedIndex].text;
+    } else {
+        nameGroup.style.display = 'block';
+        nameInput.value = '';
+    }
+}
+
+// 수정 모드 여부
+const isEditMode = {{ is_edit|yesno:"true,false" }};
+const postId = {% if post %}{{ post.id }}{% else %}null{% endif %};
+
+// 폼 제출
+document.getElementById('writeForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    // 에디터 내용을 hidden input에 저장
+    document.getElementById('content').value = quill.root.innerHTML;
+    
+    const formData = new FormData();
+    // CSRF 토큰 추가
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    formData.append('csrfmiddlewaretoken', csrfToken);
+    formData.append('title', document.getElementById('title').value);
+    formData.append('content', quill.root.innerHTML);
+    formData.append('category', document.getElementById('category').value);
+    formData.append('author_id', document.getElementById('authorSelect').value);
+    formData.append('author_name', document.getElementById('authorName').value);
+    formData.append('is_pinned', document.getElementById('isPinned').checked ? 'true' : 'false');
+    
+    // 비밀번호
+    const passwordField = document.getElementById('password');
+    if (passwordField) {
+        formData.append('password', passwordField.value);
+    }
+    
+    // 수정/생성에 따라 다른 URL 사용
+    const url = isEditMode ? `/board/api/${postId}/update/` : '{% url "board:create" %}';
+    
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            body: formData,
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast(data.message);
+            // 수정 시에는 상세 페이지로, 생성 시에는 새 글로 이동
+            window.location.href = '/board/' + (isEditMode ? postId : data.post_id) + '/';
+        } else {
+            showToast(data.error, 'error');
+        }
+    } catch (error) {
+        showToast('오류가 발생했습니다.', 'error');
+    }
+});
+</script>
+{% endblock %}
+

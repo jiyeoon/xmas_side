@@ -35,7 +35,7 @@ def board_list(request):
     page_obj = paginator.get_page(page)
     
     # 멤버 목록 (작성자 선택용)
-    members = Member.objects.filter(is_active=True).order_by('name')
+    members = Member.objects.filter(status='active').order_by('name')
     
     context = {
         'posts': page_obj,
@@ -74,6 +74,25 @@ def post_detail(request, post_id):
     return render(request, 'board/post_detail.html', context)
 
 
+def post_write(request, post_id=None):
+    """글쓰기/수정 페이지"""
+    category = request.GET.get('category', 'free')
+    members = Member.objects.filter(status='active').order_by('name')
+    
+    post = None
+    if post_id:
+        post = get_object_or_404(Post, id=post_id)
+        category = post.category
+    
+    context = {
+        'category': category,
+        'members': members,
+        'post': post,  # 수정 모드일 때 기존 게시글 데이터
+        'is_edit': post is not None,
+    }
+    return render(request, 'board/post_write.html', context)
+
+
 @require_http_methods(["POST"])
 def post_create(request):
     """게시글 작성 API"""
@@ -83,6 +102,7 @@ def post_create(request):
         category = request.POST.get('category', 'free')
         author_id = request.POST.get('author_id')
         author_name = request.POST.get('author_name', '').strip()
+        password = request.POST.get('password', '').strip()
         is_pinned = request.POST.get('is_pinned') == 'true'
         
         if not title:
@@ -107,6 +127,7 @@ def post_create(request):
             category=category,
             author=author,
             author_name=author_name,
+            password=password,
             is_pinned=is_pinned,
         )
         
@@ -126,6 +147,8 @@ def post_create(request):
         })
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return JsonResponse({'success': False, 'error': str(e)})
 
 
@@ -134,6 +157,11 @@ def post_update(request, post_id):
     """게시글 수정 API"""
     try:
         post = get_object_or_404(Post, id=post_id)
+        
+        # 비밀번호 확인
+        password = request.POST.get('password', '').strip()
+        if post.has_password() and not post.check_password(password):
+            return JsonResponse({'success': False, 'error': '비밀번호가 일치하지 않습니다.', 'need_password': True})
         
         title = request.POST.get('title', '').strip()
         content = request.POST.get('content', '').strip()
@@ -180,11 +208,41 @@ def post_delete(request, post_id):
     """게시글 삭제 API"""
     try:
         post = get_object_or_404(Post, id=post_id)
+        
+        # 비밀번호 확인
+        if request.content_type == 'application/json':
+            data = json.loads(request.body)
+            password = data.get('password', '')
+        else:
+            password = request.POST.get('password', '')
+        
+        if post.has_password() and not post.check_password(password):
+            return JsonResponse({'success': False, 'error': '비밀번호가 일치하지 않습니다.', 'need_password': True})
+        
         post.delete()
         return JsonResponse({
             'success': True,
             'message': '게시글이 삭제되었습니다.'
         })
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@require_http_methods(["POST"])
+def check_password(request, post_id):
+    """게시글 비밀번호 확인 API"""
+    try:
+        post = get_object_or_404(Post, id=post_id)
+        data = json.loads(request.body)
+        password = data.get('password', '')
+        
+        if not post.has_password():
+            return JsonResponse({'success': True, 'has_password': False})
+        
+        if post.check_password(password):
+            return JsonResponse({'success': True, 'has_password': True})
+        else:
+            return JsonResponse({'success': False, 'error': '비밀번호가 일치하지 않습니다.'})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
 

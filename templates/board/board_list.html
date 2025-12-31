@@ -2,16 +2,16 @@
 
 {% block title %}게시판 - HumbleB{% endblock %}
 
+{% block page_title %}게시판{% endblock %}
+
+{% block header_actions %}
+<a href="{% url 'board:write' %}?category={{ category }}" class="btn btn-primary">
+    <span>✏️</span> 글쓰기
+</a>
+{% endblock %}
+
 {% block content %}
 <div class="board-container">
-    <!-- 헤더 -->
-    <div class="board-header">
-        <h1>📋 게시판</h1>
-        <button class="btn btn-primary" onclick="openWriteModal()">
-            ✏️ 글쓰기
-        </button>
-    </div>
-
     <!-- 카테고리 탭 -->
     <div class="board-tabs">
         <a href="?category=all&view={{ view_type }}" 
@@ -59,8 +59,9 @@
         {% for post in posts %}
         <a href="{% url 'board:detail' post.id %}" class="gallery-item">
             <div class="gallery-thumbnail">
-                {% if post.images.first %}
-                <img src="{{ post.images.first.image.url }}" alt="{{ post.title }}">
+                {% with thumbnail=post.get_thumbnail_url %}
+                {% if thumbnail %}
+                <img src="{{ thumbnail }}" alt="{{ post.title }}">
                 {% else %}
                 <div class="no-image">
                     {% if post.category == 'notice' %}📢
@@ -68,9 +69,12 @@
                     {% else %}💬{% endif %}
                 </div>
                 {% endif %}
-                {% if post.images.count > 1 %}
-                <span class="image-count">+{{ post.images.count }}</span>
+                {% endwith %}
+                {% with img_count=post.get_image_count %}
+                {% if img_count > 1 %}
+                <span class="image-count">+{{ img_count }}</span>
                 {% endif %}
+                {% endwith %}
             </div>
             <div class="gallery-info">
                 {% if post.is_pinned %}<span class="pin-badge">📌</span>{% endif %}
@@ -135,77 +139,12 @@
     {% endif %}
 </div>
 
-<!-- 글쓰기 모달 -->
-<div id="writeModal" class="modal" style="display:none;">
-    <div class="modal-content modal-large">
-        <div class="modal-header">
-            <h2>✏️ 글쓰기</h2>
-            <button class="modal-close" onclick="closeWriteModal()">&times;</button>
-        </div>
-        <form id="writeForm" enctype="multipart/form-data">
-            {% csrf_token %}
-            <div class="form-group">
-                <label>카테고리</label>
-                <select name="category" id="writeCategory">
-                    <option value="free">💬 자유게시판</option>
-                    <option value="notice">📢 공지사항</option>
-                    <option value="gallery">📸 사진갤러리</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>작성자</label>
-                <select name="author_id" id="writeAuthor">
-                    <option value="">직접 입력</option>
-                    {% for member in members %}
-                    <option value="{{ member.id }}">{{ member.name }}</option>
-                    {% endfor %}
-                </select>
-                <input type="text" name="author_name" id="writeAuthorName" placeholder="작성자 이름" style="margin-top: 8px;">
-            </div>
-            <div class="form-group">
-                <label>제목</label>
-                <input type="text" name="title" id="writeTitle" placeholder="제목을 입력하세요" required>
-            </div>
-            <div class="form-group">
-                <label>내용</label>
-                <textarea name="content" id="writeContent" rows="10" placeholder="내용을 입력하세요"></textarea>
-            </div>
-            <div class="form-group">
-                <label>이미지 첨부</label>
-                <input type="file" name="images" id="writeImages" multiple accept="image/*">
-                <div id="imagePreview" class="image-preview"></div>
-            </div>
-            <div class="form-group checkbox-group">
-                <label>
-                    <input type="checkbox" name="is_pinned" id="writePinned">
-                    📌 상단 고정 (공지사항)
-                </label>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" onclick="closeWriteModal()">취소</button>
-                <button type="submit" class="btn btn-primary">등록</button>
-            </div>
-        </form>
-    </div>
-</div>
 
 <style>
 .board-container {
     max-width: 1000px;
     margin: 0 auto;
     padding: 20px;
-}
-
-.board-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-}
-
-.board-header h1 {
-    font-size: 1.8rem;
-    margin: 0;
 }
 
 /* 카테고리 탭 */
@@ -233,7 +172,7 @@
 }
 
 .board-tabs .tab.active {
-    background: #3b82f6;
+    background: linear-gradient(135deg, #2DD4BF 0%, #14B8A6 100%);
     color: white;
 }
 
@@ -262,11 +201,16 @@
 
 .search-form button {
     padding: 8px 12px;
-    background: #3b82f6;
+    background: linear-gradient(135deg, #2DD4BF 0%, #14B8A6 100%);
     color: white;
     border: none;
     border-radius: 0 8px 8px 0;
     cursor: pointer;
+    transition: all 0.2s;
+}
+
+.search-form button:hover {
+    background: linear-gradient(135deg, #14B8A6 0%, #0D9488 100%);
 }
 
 .view-toggle {
@@ -284,7 +228,7 @@
 }
 
 .view-btn.active {
-    background: #3b82f6;
+    background: linear-gradient(135deg, #2DD4BF 0%, #14B8A6 100%);
     color: white;
 }
 
@@ -356,7 +300,7 @@
 }
 
 .has-image, .comment-count {
-    color: #3b82f6;
+    color: #14B8A6;
     font-size: 0.85rem;
     flex-shrink: 0;
 }
@@ -529,112 +473,155 @@
 
 /* 반응형 */
 @media (max-width: 768px) {
-    .board-header {
-        flex-direction: column;
-        gap: 12px;
-        align-items: stretch;
+    .board-container {
+        padding: 12px;
     }
     
+    /* 카테고리 탭 - 가로 스크롤 */
+    .board-tabs {
+        display: flex;
+        gap: 6px;
+        overflow-x: auto;
+        padding-bottom: 8px;
+        margin-bottom: 12px;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+    
+    .board-tabs::-webkit-scrollbar {
+        display: none;
+    }
+    
+    .board-tabs .tab {
+        flex-shrink: 0;
+        padding: 8px 14px;
+        font-size: 0.85rem;
+        white-space: nowrap;
+    }
+    
+    /* 검색바 & 뷰 전환 */
     .board-toolbar {
-        flex-direction: column;
+        flex-direction: row;
+        gap: 8px;
+        margin-bottom: 12px;
     }
     
     .search-form {
-        max-width: 100%;
+        flex: 1;
+        max-width: none;
+    }
+    
+    .search-form input {
+        padding: 10px 12px;
+        font-size: 0.9rem;
+    }
+    
+    .view-toggle {
+        flex-shrink: 0;
+    }
+    
+    .view-btn {
+        padding: 10px;
+        font-size: 1rem;
+    }
+    
+    /* 리스트 뷰 - 카드 스타일 */
+    .posts-list {
+        background: transparent;
+        gap: 10px;
+        border-radius: 0;
     }
     
     .list-item {
         flex-direction: column;
         align-items: flex-start;
         gap: 8px;
+        padding: 14px;
+        border-radius: 12px;
+        border: 1px solid #e5e7eb;
+        background: white;
+    }
+    
+    .list-main {
+        width: 100%;
+    }
+    
+    .list-main h3 {
+        font-size: 0.95rem;
+        white-space: normal;
+        line-height: 1.4;
     }
     
     .list-meta {
         width: 100%;
         justify-content: flex-start;
+        gap: 12px;
+        font-size: 0.8rem;
+        color: #64748b;
+        padding-top: 8px;
+        border-top: 1px solid #f1f5f9;
     }
     
+    /* 갤러리 뷰 */
     .posts-gallery {
         grid-template-columns: repeat(2, 1fr);
-        gap: 12px;
+        gap: 10px;
+    }
+    
+    .gallery-item {
+        border-radius: 10px;
+    }
+    
+    .gallery-thumbnail {
+        aspect-ratio: 1 / 1;  /* 모바일에서 정사각형 */
+        height: auto;
+    }
+    
+    .gallery-thumbnail img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    
+    .gallery-thumbnail .no-image {
+        font-size: 2rem;
+    }
+    
+    .gallery-info {
+        padding: 10px;
+    }
+    
+    .gallery-info h3 {
+        font-size: 0.85rem;
+        -webkit-line-clamp: 2;
+    }
+    
+    .gallery-info .meta {
+        font-size: 0.75rem;
+    }
+    
+    /* 페이지네이션 */
+    .pagination {
+        gap: 4px;
+        margin-top: 20px;
+    }
+    
+    .pagination a,
+    .pagination span {
+        padding: 8px 12px;
+        font-size: 0.85rem;
+    }
+    
+    /* 빈 상태 */
+    .no-posts {
+        padding: 40px 20px;
+    }
+    
+    .no-posts p {
+        font-size: 0.95rem;
     }
 }
 </style>
 
-<script>
-// 작성자 선택 시 이름 자동 입력
-document.getElementById('writeAuthor').addEventListener('change', function() {
-    const authorNameInput = document.getElementById('writeAuthorName');
-    if (this.value) {
-        authorNameInput.value = this.options[this.selectedIndex].text;
-        authorNameInput.style.display = 'none';
-    } else {
-        authorNameInput.value = '';
-        authorNameInput.style.display = 'block';
-    }
-});
-
-// 이미지 미리보기
-document.getElementById('writeImages').addEventListener('change', function() {
-    const preview = document.getElementById('imagePreview');
-    preview.innerHTML = '';
-    
-    Array.from(this.files).forEach(file => {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            const img = document.createElement('img');
-            img.src = e.target.result;
-            preview.appendChild(img);
-        };
-        reader.readAsDataURL(file);
-    });
-});
-
-// 모달 열기/닫기
-function openWriteModal() {
-    document.getElementById('writeModal').style.display = 'flex';
-    document.getElementById('writeCategory').value = '{{ category }}' !== 'all' ? '{{ category }}' : 'free';
-}
-
-function closeWriteModal() {
-    document.getElementById('writeModal').style.display = 'none';
-    document.getElementById('writeForm').reset();
-    document.getElementById('imagePreview').innerHTML = '';
-    document.getElementById('writeAuthorName').style.display = 'block';
-}
-
-// 글 작성
-document.getElementById('writeForm').addEventListener('submit', async function(e) {
-    e.preventDefault();
-    
-    const formData = new FormData(this);
-    
-    try {
-        const response = await fetch('{% url "board:create" %}', {
-            method: 'POST',
-            body: formData,
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            showToast(data.message);
-            closeWriteModal();
-            window.location.href = '/board/' + data.post_id + '/';
-        } else {
-            showToast(data.error, 'error');
-        }
-    } catch (error) {
-        showToast('오류가 발생했습니다.', 'error');
-    }
-});
-
-// 모달 외부 클릭 시 닫기
-document.getElementById('writeModal').addEventListener('click', function(e) {
-    if (e.target === this) {
-        closeWriteModal();
-    }
-});
-</script>
 {% endblock %}
 

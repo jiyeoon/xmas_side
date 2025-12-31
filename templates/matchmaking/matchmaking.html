@@ -896,9 +896,9 @@ async function downloadTableAsImage() {
     showLoading();
     
     try {
-        // 이미지 저장을 위해 임시로 너비 고정 (800px)
+        // 이미지 저장을 위해 임시로 너비 고정 (700px)
         const originalStyle = tableWrapper.style.cssText;
-        tableWrapper.style.cssText = 'width: 800px !important; min-width: 800px !important; max-width: 800px !important;';
+        tableWrapper.style.cssText = 'width: 700px !important; min-width: 700px !important; max-width: 700px !important;';
         
         // 리플로우 대기
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -908,7 +908,7 @@ async function downloadTableAsImage() {
             scale: 2, // 고해상도
             useCORS: true,
             logging: false,
-            width: 800,
+            width: 700,
         });
         
         // 원래 스타일 복원

@@ -2,6 +2,12 @@
 
 {% block title %}{{ post.title }} - HumbleB{% endblock %}
 
+{% block page_title %}게시판{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
+{% endblock %}
+
 {% block content %}
 <div class="post-container">
     <!-- 뒤로가기 -->
@@ -35,13 +41,13 @@
     {% endif %}
     
     <!-- 본문 -->
-    <div class="post-content">
-        {{ post.content|linebreaks }}
+    <div class="post-content ql-editor">
+        {{ post.content|safe }}
     </div>
     
     <!-- 액션 버튼 -->
     <div class="post-actions">
-        <button class="btn btn-secondary" onclick="openEditModal()">✏️ 수정</button>
+        <button class="btn btn-secondary" onclick="editPost()">✏️ 수정</button>
         <button class="btn btn-danger" onclick="deletePost()">🗑️ 삭제</button>
     </div>
     
@@ -78,11 +84,7 @@
         
         <!-- 댓글 작성 -->
         <div class="comment-form">
-            <select id="commentAuthor">
-                <option value="">익명</option>
-                {% for member in post.author.id|default:0 %}{% endfor %}
-            </select>
-            <input type="text" id="commentAuthorName" placeholder="이름">
+            <input type="text" id="commentAuthorName" placeholder="이름 (익명 가능)">
             <textarea id="commentContent" placeholder="댓글을 입력하세요..." rows="2"></textarea>
             <button class="btn btn-primary" onclick="submitComment()">등록</button>
         </div>
@@ -103,6 +105,27 @@
                 <p>첫 댓글을 작성해보세요!</p>
             </div>
             {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- 비밀번호 확인 모달 -->
+<div id="passwordModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); justify-content:center; align-items:center; z-index:9999;">
+    <div style="background:white; border-radius:16px; box-shadow:0 20px 60px rgba(0,0,0,0.3); max-width:400px; width:90%;">
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid #e5e7eb;">
+            <h2 style="margin:0; font-size:1.2rem;">🔒 비밀번호 확인</h2>
+            <button onclick="closePasswordModal()" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:#64748b;">&times;</button>
+        </div>
+        <div style="padding:20px;">
+            <p style="margin-bottom:16px; color:#64748b;">이 게시글은 비밀번호가 설정되어 있습니다.</p>
+            <div>
+                <label style="display:block; margin-bottom:6px; font-weight:500;">비밀번호</label>
+                <input type="password" id="passwordInput" placeholder="비밀번호를 입력하세요" style="width:100%; padding:12px; border:1px solid #e5e7eb; border-radius:8px; font-size:1rem; box-sizing:border-box;">
+            </div>
+        </div>
+        <div style="padding:16px 20px; border-top:1px solid #e5e7eb; display:flex; justify-content:flex-end; gap:8px;">
+            <button class="btn btn-secondary" onclick="closePasswordModal()">취소</button>
+            <button class="btn btn-primary" onclick="submitPassword()">확인</button>
         </div>
     </div>
 </div>
@@ -183,7 +206,7 @@
 }
 
 .back-link:hover {
-    color: #3b82f6;
+    color: #14B8A6;
 }
 
 .post-header {
@@ -269,6 +292,27 @@
     color: #374151;
     min-height: 100px;
     margin-bottom: 24px;
+    overflow-x: hidden;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+/* 본문 내 이미지 */
+.post-content img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 16px 0;
+    border-radius: 8px;
+}
+
+/* 본문 내 Quill 에디터 스타일 유지 */
+.post-content p {
+    margin: 0 0 16px;
+}
+
+.post-content p:last-child {
+    margin-bottom: 0;
 }
 
 /* 액션 버튼 */
@@ -336,7 +380,7 @@
 }
 
 .comment-count {
-    color: #3b82f6;
+    color: #14B8A6;
 }
 
 .comment-form {
@@ -447,6 +491,91 @@
     object-fit: contain;
 }
 
+/* 모달 기본 스타일 */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    padding: 20px;
+}
+
+.modal-content {
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.modal-header h2 {
+    margin: 0;
+    font-size: 1.2rem;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #64748b;
+    padding: 0;
+    line-height: 1;
+}
+
+.modal-close:hover {
+    color: #1e293b;
+}
+
+/* 비밀번호 모달 */
+.modal-small {
+    max-width: 400px;
+    width: 90%;
+}
+
+.modal-small .modal-body {
+    padding: 20px;
+}
+
+.modal-small .modal-body p {
+    margin-bottom: 16px;
+    color: #64748b;
+}
+
+.modal-small .form-group {
+    margin-bottom: 0;
+}
+
+.modal-small .form-group input {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    font-size: 1rem;
+}
+
+.modal-small .modal-footer {
+    padding: 16px 20px;
+    border-top: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
 /* 수정 모달 */
 .modal-large {
     max-width: 600px;
@@ -520,23 +649,236 @@
 
 /* 반응형 */
 @media (max-width: 768px) {
-    .post-navigation {
-        grid-template-columns: 1fr;
+    .post-container {
+        padding: 12px;
     }
     
+    .back-link {
+        font-size: 0.85rem;
+        margin-bottom: 12px;
+    }
+    
+    /* 헤더 */
+    .post-header {
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+    }
+    
+    .post-badges {
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 10px;
+    }
+    
+    .post-badges .pin-badge,
+    .post-badges .category-badge {
+        font-size: 0.75rem;
+        padding: 3px 8px;
+    }
+    
+    .post-header h1 {
+        font-size: 1.2rem;
+        line-height: 1.4;
+        margin-bottom: 10px;
+    }
+    
+    .post-meta {
+        gap: 10px;
+        font-size: 0.8rem;
+    }
+    
+    /* 본문 */
+    .post-content {
+        font-size: 0.95rem;
+        line-height: 1.7;
+        margin-bottom: 20px;
+    }
+    
+    .post-content img {
+        max-width: 100% !important;
+        width: 100% !important;
+        height: auto !important;
+        margin: 12px 0;
+    }
+    
+    .post-content p {
+        margin-bottom: 12px;
+    }
+    
+    /* 이미지 갤러리 */
     .post-images {
         grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+        margin-bottom: 16px;
+    }
+    
+    .image-item {
+        border-radius: 8px;
+    }
+    
+    /* 액션 버튼 */
+    .post-actions {
+        padding: 12px 0;
+        gap: 8px;
+    }
+    
+    .post-actions .btn {
+        flex: 1;
+        min-width: 0;
+        padding: 10px 12px;
+        font-size: 0.85rem;
+        text-align: center;
+    }
+    
+    /* 이전/다음 네비게이션 */
+    .post-navigation {
+        grid-template-columns: 1fr;
+        gap: 8px;
+        margin: 16px 0;
+    }
+    
+    .nav-item {
+        padding: 12px;
+    }
+    
+    .nav-item .label {
+        font-size: 0.75rem;
+    }
+    
+    .nav-item .title {
+        font-size: 0.9rem;
+    }
+    
+    .nav-item.next {
+        text-align: left;
+    }
+    
+    /* 댓글 */
+    .comments-section {
+        margin-top: 24px;
+    }
+    
+    .comments-section h3 {
+        font-size: 1rem;
+        margin-bottom: 12px;
     }
     
     .comment-form {
         padding: 12px;
+        gap: 8px;
+    }
+    
+    .comment-form input,
+    .comment-form textarea {
+        padding: 10px 12px;
+        font-size: 16px; /* iOS 줌 방지 */
+    }
+    
+    .comment-form textarea {
+        min-height: 60px;
+    }
+    
+    .comment-item {
+        padding: 12px;
+    }
+    
+    .comment-header {
+        gap: 8px;
+        margin-bottom: 6px;
+    }
+    
+    .comment-author {
+        font-size: 0.9rem;
+    }
+    
+    .comment-date {
+        font-size: 0.75rem;
+    }
+    
+    .comment-content {
+        font-size: 0.9rem;
+        line-height: 1.5;
+    }
+    
+    .no-comments {
+        padding: 30px;
+    }
+    
+    .no-comments p {
+        font-size: 0.9rem;
     }
 }
 </style>
 
 <script>
 const postId = {{ post.id }};
+const hasPassword = {{ post.has_password|yesno:"true,false" }};
 let deleteImageIds = [];
+let pendingAction = null;  // 'edit' or 'delete'
+
+// 비밀번호 모달
+function openPasswordModal(action) {
+    pendingAction = action;
+    document.getElementById('passwordInput').value = '';
+    document.getElementById('passwordModal').style.display = 'flex';
+    document.getElementById('passwordInput').focus();
+}
+
+function closePasswordModal() {
+    document.getElementById('passwordModal').style.display = 'none';
+    pendingAction = null;
+}
+
+async function submitPassword() {
+    const password = document.getElementById('passwordInput').value;
+    
+    try {
+        // fetchWithCSRF는 이미 JSON을 파싱해서 반환함
+        const data = await fetchWithCSRF(`/board/api/${postId}/check_password/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: password }),
+        });
+        
+        if (data.success) {
+            const action = pendingAction;
+            closePasswordModal();
+            if (action === 'edit') {
+                // 비밀번호를 sessionStorage에 저장 후 수정 페이지로 이동
+                sessionStorage.setItem('editPassword_' + postId, password);
+                window.location.href = `/board/${postId}/edit/`;
+            } else if (action === 'delete') {
+                // 비밀번호 확인 후 삭제 실행
+                executeDelete(password);
+            }
+        } else {
+            showToast(data.error, 'error');
+        }
+    } catch (error) {
+        showToast('오류가 발생했습니다.', 'error');
+    }
+}
+
+// Enter 키로 비밀번호 제출
+document.addEventListener('DOMContentLoaded', function() {
+    const passwordInput = document.getElementById('passwordInput');
+    if (passwordInput) {
+        passwordInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                submitPassword();
+            }
+        });
+    }
+});
+
+// 수정 버튼 클릭
+function editPost() {
+    if (hasPassword) {
+        openPasswordModal('edit');
+    } else {
+        window.location.href = `/board/${postId}/edit/`;
+    }
+}
 
 // 이미지 모달
 function openImageModal(src) {
@@ -600,12 +942,23 @@ document.getElementById('editForm').addEventListener('submit', async function(e)
 });
 
 // 글 삭제
-async function deletePost() {
+function deletePost() {
     if (!confirm('정말 삭제하시겠습니까?')) return;
     
+    if (hasPassword) {
+        openPasswordModal('delete');
+    } else {
+        executeDelete('');
+    }
+}
+
+// 실제 삭제 실행
+async function executeDelete(password) {
     try {
         const response = await fetchWithCSRF(`/board/api/${postId}/delete/`, {
             method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: password }),
         });
         
         const data = await response.json();
